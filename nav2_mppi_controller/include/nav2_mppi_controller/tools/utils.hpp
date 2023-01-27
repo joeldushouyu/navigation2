@@ -436,12 +436,12 @@ inline double posePointAngle(const geometry_msgs::msg::Pose & pose, double point
  */
 inline void savitskyGolayFilter(
   models::ControlSequence & control_sequence,
-  std::array<mppi::models::Control, 3> & control_history,
+  std::array<mppi::models::Control, 4> & control_history,
   const models::OptimizerSettings & settings)
 {
   // Savitzky-Golay Quadratic, 7-point Coefficients
-  xt::xarray<float> filter = {-2.0, 3.0, 6.0, 7.0, 6.0, 3.0, -2.0};
-  filter /= 21.0;
+  xt::xarray<float> filter = {-21.0, 14.0, 39.0, 54.0, 59.0, 54.0, 39.0, 14.0, -21.0};
+  filter /= 231.0;
 
   const unsigned int num_sequences = control_sequence.vx.shape(0) - 1;
 
@@ -456,7 +456,7 @@ inline void savitskyGolayFilter(
 
   auto applyFilterOverAxis =
     [&](xt::xtensor<float, 1> & sequence,
-      const float hist_0, const float hist_1, const float hist_2) -> void
+      const float hist_0, const float hist_1, const float hist_2, const float hist_3) -> void
     {
       unsigned int idx = 0;
       sequence(idx) = applyFilter(
@@ -464,63 +464,101 @@ inline void savitskyGolayFilter(
         hist_0,
         hist_1,
         hist_2,
+        hist_3,
         sequence(idx),
         sequence(idx + 1),
         sequence(idx + 2),
-        sequence(idx + 3)});
+        sequence(idx + 3),
+        sequence(idx + 4)});
 
       idx++;
       sequence(idx) = applyFilter(
       {
         hist_1,
         hist_2,
+        hist_3,
         sequence(idx - 1),
         sequence(idx),
         sequence(idx + 1),
         sequence(idx + 2),
-        sequence(idx + 3)});
+        sequence(idx + 3),
+        sequence(idx + 4)});
 
       idx++;
       sequence(idx) = applyFilter(
       {
         hist_2,
+        hist_3,
         sequence(idx - 2),
         sequence(idx - 1),
         sequence(idx),
         sequence(idx + 1),
         sequence(idx + 2),
-        sequence(idx + 3)});
+        sequence(idx + 3),
+        sequence(idx + 4)});
 
-      for (idx = 3; idx != num_sequences - 3; idx++) {
+      idx++;
+      sequence(idx) = applyFilter(
+      {
+        hist_3,
+        sequence(idx - 3),
+        sequence(idx - 2),
+        sequence(idx - 1),
+        sequence(idx),
+        sequence(idx + 1),
+        sequence(idx + 2),
+        sequence(idx + 3),
+        sequence(idx + 4)});
+
+      for (idx = 4; idx != num_sequences - 4; idx++) {
         sequence(idx) = applyFilter(
         {
+          sequence(idx - 4),
           sequence(idx - 3),
           sequence(idx - 2),
           sequence(idx - 1),
           sequence(idx),
           sequence(idx + 1),
           sequence(idx + 2),
-          sequence(idx + 3)});
+          sequence(idx + 3),
+          sequence(idx + 4)});
       }
 
       idx++;
       sequence(idx) = applyFilter(
       {
+        sequence(idx - 4),
         sequence(idx - 3),
         sequence(idx - 2),
         sequence(idx - 1),
         sequence(idx),
         sequence(idx + 1),
         sequence(idx + 2),
+        sequence(idx + 3),
+        sequence(idx + 3)});
+
+      idx++;
+      sequence(idx) = applyFilter(
+      {
+        sequence(idx - 4),
+        sequence(idx - 3),
+        sequence(idx - 2),
+        sequence(idx - 1),
+        sequence(idx),
+        sequence(idx + 1),
+        sequence(idx + 2),
+        sequence(idx + 2),
         sequence(idx + 2)});
 
       idx++;
       sequence(idx) = applyFilter(
       {
+        sequence(idx - 4),
         sequence(idx - 3),
         sequence(idx - 2),
         sequence(idx - 1),
         sequence(idx),
+        sequence(idx + 1),
         sequence(idx + 1),
         sequence(idx + 1),
         sequence(idx + 1)});
@@ -528,9 +566,11 @@ inline void savitskyGolayFilter(
       idx++;
       sequence(idx) = applyFilter(
       {
+        sequence(idx - 4),
         sequence(idx - 3),
         sequence(idx - 2),
         sequence(idx - 1),
+        sequence(idx),
         sequence(idx),
         sequence(idx),
         sequence(idx),
@@ -539,17 +579,21 @@ inline void savitskyGolayFilter(
 
   // Filter trajectories
   applyFilterOverAxis(
-    control_sequence.vx, control_history[0].vx, control_history[1].vx, control_history[2].vx);
+    control_sequence.vx, control_history[0].vx,
+    control_history[1].vx, control_history[2].vx, control_history[3].vx);
   applyFilterOverAxis(
-    control_sequence.vy, control_history[0].vy, control_history[1].vy, control_history[2].vy);
+    control_sequence.vy, control_history[0].vy,
+    control_history[1].vy, control_history[2].vy, control_history[3].vy);
   applyFilterOverAxis(
-    control_sequence.wz, control_history[0].wz, control_history[1].wz, control_history[2].wz);
+    control_sequence.wz, control_history[0].wz,
+    control_history[1].wz, control_history[2].wz, control_history[3].wz);
 
   // Update control history
   unsigned int offset = settings.shift_control_sequence ? 1 : 0;
   control_history[0] = control_history[1];
   control_history[1] = control_history[2];
-  control_history[2] = {
+  control_history[2] = control_history[3];
+  control_history[3] = {
     control_sequence.vx(offset),
     control_sequence.vy(offset),
     control_sequence.wz(offset)};
